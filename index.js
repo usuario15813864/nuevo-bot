@@ -1,3 +1,4 @@
+console.log("🚀 BOT ARRANCANDO EN SERVIDOR");
 // index.js
 import dotenv from "dotenv";
 dotenv.config();
