@@ -26,7 +26,7 @@ const productos = {
 // JID del asesor que recibirá los pedidos
 const ASESOR_JID = "593979108339@s.whatsapp.net";
 
-// Inicializar cliente de OpenAI
+// Inicializar OpenAI
 if (!process.env.OPENAI_API_KEY) {
     console.error("❌ Falta OPENAI_API_KEY en el archivo .env");
     process.exit(1);
@@ -34,8 +34,7 @@ if (!process.env.OPENAI_API_KEY) {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Prompt mejorado: super vendedor
-const SYSTEM_PROMPT = `
+// Prompt de la IA super vendedor con precios fijos
 const SYSTEM_PROMPT = `
 Eres un asistente de ventas experto de Minegoc8. 
 No inventes nada que no esté aquí. Usa únicamente estos productos y precios exactos:
@@ -46,14 +45,14 @@ No inventes nada que no esté aquí. Usa únicamente estos productos y precios e
 4. Masajeador eléctrico corporal - $15
 
 Reglas de venta:
+- Siempre anima al usuario a comprar.
 - Hacemos envíos a domicilio.
 - Pago contra entrega en efectivo o transferencia.
-- También aceptamos pagos con de una.
-
-Si el usuario pregunta ubicación, responde exactamente:
+- También aceptamos pagos con DUEÑA.
+- Si el usuario pregunta ubicación, responde exactamente:
 "Estamos ubicados en el Centro Histórico de Quito, calle Benalcázar y Manabí."
 
-Responde corto, claro y en español. Siempre menciona **productos, precios, envíos y pagos**. No inventes otros precios.
+Responde corto, claro y en español. Siempre menciona productos, precios, envíos y pagos. No inventes otros precios.
 `;
 
 async function startBot(reconnectDelay = 2000) {
@@ -64,13 +63,13 @@ async function startBot(reconnectDelay = 2000) {
         version,
         auth: state,
         logger,
-        printQRInTerminal: false, // <--- No QR en Railway
+        printQRInTerminal: false, // No QR en Railway
         browser: ["MinegocBot", "Chrome", "1.0"],
         syncFullHistory: false,
         markOnlineOnConnect: true
     });
 
-    // Conexión y reconexión
+    // Conexión y reconexión automática
     sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
         if (connection === "open") console.log("✅ BOT CONECTADO");
         if (connection === "close") {
@@ -104,7 +103,7 @@ Productos disponibles:
 3 Faja $8
 4 Masajeador $15
 
-Escribe el número del producto para ver más detalles y cómo comprar 😊`
+Escribe el número del producto para ver detalles y cómo comprar 😊`
             });
             return;
         }
@@ -151,7 +150,7 @@ Elige un número para ver detalles.`
                 const cliente = from.split("@")[0];
                 await sock.sendMessage(ASESOR_JID, { text: `PEDIDO: ${prod.nombre} $${prod.precio}\nCliente: +${cliente}\nDatos: ${text}` });
                 await sock.sendMessage(from, { text: 
-`¡Pedido recibido! Nuestro asesor te contactará pronto. Recuerda que hacemos envíos y aceptamos pagos contra entrega, transferencia o DUEÑA.`
+`¡Pedido recibido! Nuestro asesor te contactará pronto. Hacemos envíos y aceptamos pagos contra entrega, transferencia o DUEÑA.`
                 });
                 state.step = "menu";
             }
