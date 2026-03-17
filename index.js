@@ -10,7 +10,6 @@ import makeWASocket, {
     fetchLatestBaileysVersion
 } from "@whiskeysockets/baileys";
 import pino from "pino";
-import qrcode from "qrcode-terminal";
 import OpenAI from "openai";
 
 const logger = pino({ level: "silent" });
@@ -18,41 +17,44 @@ const userStates = new Map();
 
 // Productos disponibles
 const productos = {
-    "1": { nombre: "Lavadora portátil", precio: 8, descripcion: "Compacta, bajo consumo" },
-    "2": { nombre: "Selladora al vacío portátil", precio: 28, descripcion: "Conserva alimentos frescos" },
-    "3": { nombre: "Faja modeladora reductora", precio: 8, descripcion: "Compresión cómoda" },
-    "4": { nombre: "Masajeador eléctrico corporal", precio: 15, descripcion: "Alivio muscular" }
+    "1": { nombre: "Lavadora portátil", precio: 8, descripcion: "Compacta, bajo consumo, ideal para departamentos pequeños" },
+    "2": { nombre: "Selladora al vacío portátil", precio: 28, descripcion: "Conserva alimentos frescos por más tiempo" },
+    "3": { nombre: "Faja modeladora reductora", precio: 8, descripcion: "Compresión cómoda y discreta" },
+    "4": { nombre: "Masajeador eléctrico corporal", precio: 15, descripcion: "Alivio muscular y relajación inmediata" }
 };
 
-// JID del asesor
+// JID del asesor que recibirá los pedidos
 const ASESOR_JID = "593979108339@s.whatsapp.net";
 
-// Inicializar OpenAI
+// Inicializar cliente de OpenAI
 if (!process.env.OPENAI_API_KEY) {
-    console.error("❌ Falta OPENAI_API_KEY en .env");
+    console.error("❌ Falta OPENAI_API_KEY en el archivo .env");
     process.exit(1);
 }
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// Prompt mejorado: super vendedor
 const SYSTEM_PROMPT = `
-const SYSTEM_PROMPT = `
-Eres un asistente amable de Minegoc8. 
-Productos disponibles: lavadora $8, selladora $28, faja $8, masajeador $15.
-Si preguntan cómo comprar → di: "Escribe *menú* y el número del producto (1-4) 😊"
-
-Reglas de venta:
-- Hacemos envíos a domicilio.
+Eres un asistente de ventas experto de Minegoc8, muy amable y persuasivo. 
+Tus objetivos son:
+- Explicar los productos claramente con precio y beneficios.
+- Motivar al usuario a comprar y guiarlo paso a paso.
+- Siempre mencionar que hacemos envíos a domicilio.
 - El pago puede ser contra entrega en efectivo o transferencia.
 - También aceptamos pagos con deuna.
-
-Cuando el usuario pregunte por la ubicación, responde exactamente:
+- Si el usuario pregunta ubicación, responde exactamente:
 "Estamos ubicados en el Centro Histórico de Quito, calle Benalcázar y Manabí."
 
-Responde corto, claro y en español. No inventes otras direcciones ni reglas.
+Reglas importantes:
+- Responde de manera clara, corta y amigable.
+- Nunca digas que no hacen envíos.
+- Siempre menciona las opciones de pago si preguntan por compra.
+- Resalta beneficios y promociones de los productos cuando sea posible.
+- No inventes otras direcciones ni condiciones de pago.
 `;
+
 async function startBot(reconnectDelay = 2000) {
-    // Generar o usar sesión existente
     const { state, saveCreds } = await useMultiFileAuthState("auth_info");
     const { version } = await fetchLatestBaileysVersion();
 
@@ -60,15 +62,14 @@ async function startBot(reconnectDelay = 2000) {
         version,
         auth: state,
         logger,
-        printQRInTerminal: false, // <-- muestra QR solo la primera vez local
+        printQRInTerminal: false, // <--- No QR en Railway
         browser: ["MinegocBot", "Chrome", "1.0"],
         syncFullHistory: false,
         markOnlineOnConnect: true
     });
 
-    // Manejo de conexión
-    sock.ev.on("connection.update", ({ connection, qr, lastDisconnect }) => {
-        if (qr) qrcode.generate(qr, { small: true }); // QR en terminal local
+    // Conexión y reconexión
+    sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
         if (connection === "open") console.log("✅ BOT CONECTADO");
         if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -81,7 +82,7 @@ async function startBot(reconnectDelay = 2000) {
 
     sock.ev.on("creds.update", saveCreds);
 
-    // Mensajes entrantes
+    // Manejo de mensajes entrantes
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
@@ -90,7 +91,7 @@ async function startBot(reconnectDelay = 2000) {
         let text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
         const mensaje = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-        // Estado inicial del usuario
+        // Crear estado si primer contacto
         if (!userStates.has(from)) {
             userStates.set(from, { step: "menu" });
             await sock.sendMessage(from, { text: 
@@ -101,14 +102,14 @@ Productos disponibles:
 3 Faja $8
 4 Masajeador $15
 
-Escribe el número para ver detalles` 
+Escribe el número del producto para ver más detalles y cómo comprar 😊`
             });
             return;
         }
 
         let state = userStates.get(from);
 
-        // Menú y selección
+        // Menú y selección de producto
         if (["hola","menu","menú","inicio"].some(w => mensaje.includes(w)) || /^[1-4]$/.test(mensaje)) {
             if (/^[1-4]$/.test(mensaje)) {
                 const prod = productos[mensaje];
@@ -118,7 +119,8 @@ Escribe el número para ver detalles`
 `✨ *${prod.nombre}* - $${prod.precio}
 ${prod.descripcion}
 
-Escribe *comprar* para continuar` });
+Escribe *comprar* para recibir instrucciones de pago y envío.`
+                });
             } else {
                 state.step = "menu";
                 await sock.sendMessage(from, { text: 
@@ -128,7 +130,8 @@ Escribe *comprar* para continuar` });
 3 Faja $8
 4 Masajeador $15
 
-Elige número` });
+Elige un número para ver detalles.`
+                });
             }
             userStates.set(from, state);
             return;
@@ -138,20 +141,23 @@ Elige número` });
         if (["comprar","pedir","quiero"].some(w => mensaje.includes(w)) || state.step === "comprando") {
             if (state.step === "producto") {
                 state.step = "comprando";
-                const prod = productos[state.selectedProduct];
-                await sock.sendMessage(from, { text: "Envía: nombre, dirección, teléfono" });
+                await sock.sendMessage(from, { text: 
+`Genial! 😊 Para completar tu pedido, envía tu nombre, dirección y teléfono.`
+                });
             } else if (state.step === "comprando" && text.length > 10) {
                 const prod = productos[state.selectedProduct];
                 const cliente = from.split("@")[0];
                 await sock.sendMessage(ASESOR_JID, { text: `PEDIDO: ${prod.nombre} $${prod.precio}\nCliente: +${cliente}\nDatos: ${text}` });
-                await sock.sendMessage(from, { text: "¡Pedido recibido! El asesor te contactará pronto" });
+                await sock.sendMessage(from, { text: 
+`¡Pedido recibido! Nuestro asesor te contactará pronto. Recuerda que hacemos envíos y aceptamos pagos contra entrega, transferencia o DUEÑA.`
+                });
                 state.step = "menu";
             }
             userStates.set(from, state);
             return;
         }
 
-        // OpenAI para otras preguntas
+        // OpenAI para otras consultas
         try {
             const completion = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
