@@ -1,4 +1,4 @@
-console.log("🤖 BOT MINEGOC8 INICIANDO...");
+console.log("🚀 BOT ARRANCANDO EN SERVIDOR");
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -17,21 +17,21 @@ import OpenAI from "openai";
 const logger = pino({ level: "silent" });
 const userStates = new Map();
 
-/* ------------------ PRODUCTOS ------------------ */
+/* -------- PRODUCTOS -------- */
 
 const productos = {
-  "1": { nombre: "Lavadora portátil", precio: 8, descripcion: "Compacta y bajo consumo" },
-  "2": { nombre: "Selladora al vacío portátil", precio: 28, descripcion: "Mantiene alimentos frescos" },
+  "1": { nombre: "Lavadora portátil", precio: 8, descripcion: "Compacta, bajo consumo" },
+  "2": { nombre: "Selladora al vacío portátil", precio: 28, descripcion: "Conserva alimentos frescos" },
   "3": { nombre: "Faja modeladora reductora", precio: 8, descripcion: "Compresión cómoda" },
-  "4": { nombre: "Masajeador eléctrico corporal", precio: 15, descripcion: "Relajación muscular" }
+  "4": { nombre: "Masajeador eléctrico corporal", precio: 15, descripcion: "Alivio muscular" }
 };
 
 const ASESOR_JID = "593979108339@s.whatsapp.net";
 
-/* ------------------ OPENAI ------------------ */
+/* -------- OPENAI -------- */
 
 if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ Falta OPENAI_API_KEY");
+  console.error("❌ Falta OPENAI_API_KEY en variables");
   process.exit(1);
 }
 
@@ -39,13 +39,12 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-/* ------------------ PROMPT IA ------------------ */
+/* -------- PROMPT IA -------- */
 
 const SYSTEM_PROMPT = `
-Eres un asistente de ventas amable para Minegoc8.
+Eres un asistente amable de Minegoc8.
 
 Productos disponibles:
-
 1. Lavadora portátil $8
 2. Selladora al vacío $28
 3. Faja modeladora $8
@@ -53,18 +52,16 @@ Productos disponibles:
 
 También vendemos fundas para selladora al vacío (precio depende del tamaño).
 
-Reglas:
-- Responde corto, claro y amable.
-- Si el cliente quiere comprar dile:
+Si preguntan por comprar responde:
 "Escribe *menú* y el número del producto (1-4) 😊"
 
 Si preguntan la ubicación responde EXACTAMENTE:
 "Estamos ubicados en el Centro Histórico de Quito, calle Benalcázar y Manabí."
 
-No inventes direcciones.
+Responde corto, claro y en español.
 `;
 
-/* ------------------ BOT ------------------ */
+/* -------- BOT -------- */
 
 async function startBot() {
 
@@ -79,7 +76,7 @@ async function startBot() {
     browser: ["MinegocBot", "Chrome", "1.0"]
   });
 
-  /* ---------- CONEXIÓN ---------- */
+  /* -------- CONEXIÓN -------- */
 
   sock.ev.on("connection.update", async (update) => {
 
@@ -93,7 +90,7 @@ async function startBot() {
 
       const qrLink = await QRCode.toDataURL(qr);
 
-      console.log("🔗 QR LINK (copiar en navegador):");
+      console.log("🔗 LINK DEL QR (copiar en navegador):");
       console.log(qrLink);
     }
 
@@ -107,17 +104,16 @@ async function startBot() {
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
       if (shouldReconnect) {
-
         console.log("🔄 Reconectando en 5 segundos...");
-
         setTimeout(startBot, 5000);
       }
     }
+
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  /* ---------- MENSAJES ---------- */
+  /* -------- MENSAJES -------- */
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
 
@@ -139,7 +135,7 @@ async function startBot() {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
 
-    /* ---------- PRIMER MENSAJE ---------- */
+    /* -------- PRIMER MENSAJE -------- */
 
     if (!userStates.has(from)) {
 
@@ -164,10 +160,10 @@ Escribe el número para ver detalles`
 
     let state = userStates.get(from);
 
-    /* ---------- MENÚ ---------- */
+    /* -------- MENÚ -------- */
 
     if (
-      ["hola", "menu", "menú", "inicio"].some(w => mensaje.includes(w)) ||
+      ["hola","menu","menú","inicio"].some(w => mensaje.includes(w)) ||
       /^[1-4]$/.test(mensaje)
     ) {
 
@@ -205,14 +201,13 @@ Elige número`
       }
 
       userStates.set(from, state);
-
       return;
     }
 
-    /* ---------- COMPRA ---------- */
+    /* -------- COMPRA -------- */
 
     if (
-      ["comprar", "pedir", "quiero"].some(w => mensaje.includes(w)) ||
+      ["comprar","pedir","quiero"].some(w => mensaje.includes(w)) ||
       state.step === "comprando"
     ) {
 
@@ -250,23 +245,19 @@ ${text}`
       }
 
       userStates.set(from, state);
-
       return;
     }
 
-    /* ---------- IA ---------- */
+    /* -------- IA -------- */
 
     try {
 
       const completion = await openai.chat.completions.create({
-
         model: "gpt-4o-mini",
-
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: text }
         ]
-
       });
 
       await sock.sendMessage(from, {
@@ -283,6 +274,7 @@ ${text}`
     }
 
   });
+
 }
 
 startBot().catch(err => console.error(err));
