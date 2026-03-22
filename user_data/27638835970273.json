@@ -1,0 +1,14 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "gracias por comunicarte con minegoc8. ¿cómo podemos ayudarte?"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! Gracias por contactarnos. En Minegoc8 tenemos productos increíbles como lavadoras portátiles, selladoras al vacío, fajas modeladoras y masajeadores. ¿Te gustaría saber más sobre alguno de ellos?"
+    }
+  ],
+  "selectedProduct": null,
+  "step": "menu"
+}

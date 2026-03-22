@@ -1,0 +1,46 @@
+{
+  "history": [
+    {
+      "role": "user",
+      "content": "reservamela"
+    },
+    {
+      "role": "assistant",
+      "content": "Claro, puedo reservarte el producto. ¿Cuál de nuestros artículos te gustaría? Recuerda que tenemos lavadoras portátiles, selladoras al vacío, fajas modeladoras y masajeadores. ¡No te quedes sin el tuyo!"
+    },
+    {
+      "role": "user",
+      "content": "faja"
+    },
+    {
+      "role": "assistant",
+      "content": "Perfecto, te reservo una faja modeladora por solo $8. Es una excelente elección para moldear tu figura. ¿Te gustaría que te la envíe a domicilio en Quito?"
+    },
+    {
+      "role": "user",
+      "content": "si necesito que me la envies"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Genial! Te realizaré el envío a domicilio en Quito. Puedes pagar contra entrega, por transferencia o deuna. ¿Cómo prefieres hacer el pago?"
+    },
+    {
+      "role": "user",
+      "content": "cobtraentrega"
+    },
+    {
+      "role": "assistant",
+      "content": "Listo, entonces tu faja modeladora queda reservada y el pago será contra entrega. Te la enviaré a la dirección que me indiques. ¿Cuál es tu dirección, por favor?"
+    },
+    {
+      "role": "user",
+      "content": "calle ambato y venezuela"
+    },
+    {
+      "role": "assistant",
+      "content": "Perfecto, tu faja modeladora será enviada a Calle Ambato y Venezuela. ¡Te encantará! Estaré en contacto contigo para coordinar la entrega. ¡Gracias por tu compra!"
+    }
+  ],
+  "selectedProduct": "1",
+  "step": "comprando"
+}
