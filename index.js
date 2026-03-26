@@ -1,5 +1,3 @@
-// BOT SIMPLE - FAJA DE PAPADA 🔥
-
 import qrcode from "qrcode-terminal";
 import dotenv from "dotenv";
 import makeWASocket, {
@@ -13,73 +11,74 @@ dotenv.config();
 
 const logger = pino({ level: "silent" });
 
-// ⚠️ ASESOR (SIN +)
-const ASESOR_JID = "593979108339@s.whatsapp.net";
+// ⚠️ ASESOR
+const ASESOR_NUMERO = "593979108339"; 
+const ASESOR_JID = `${ASESOR_NUMERO}@s.whatsapp.net`;
 
-// 🤖 OPENAI
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
 });
 
-// 🧠 PROMPT SIMPLE Y CLARO
+// 🧠 PROMPT
 const SYSTEM_PROMPT = `
-Eres un vendedor experto.
+Eres vendedor de una faja de papada ($8).
 
-Producto: faja moldeadora de papada ($8)
+- Beneficios: reduce papada, mejora apariencia
+- Quito: contraentrega
+- Provincias: pago previo
 
-Reglas:
-- Responde corto
-- Explica beneficios: reduce papada, mejora apariencia
-- No inventar nada
-
-Envío:
-- Quito: pago contraentrega
-- Otras ciudades: pago previo + envío
-
-IMPORTANTE:
-- Si el cliente quiere comprar o pide info → responde con [ASESOR]
+Si quiere comprar o info envia al asesor
 `;
 
-// 🔥 DETECTAR INTENCIÓN DE COMPRA
 function detectarCompra(texto) {
     texto = texto.toLowerCase();
     return [
-        "precio",
-        "vale",
-        "cuanto",
-        "cuánto",
-        "quiero",
-        "me interesa",
-        "comprar",
-        "info",
-        "informacion"
+        "precio","cuanto","cuánto","vale",
+        "quiero","me interesa","comprar","info"
     ].some(p => texto.includes(p));
 }
 
-// 📲 ENVIAR AL ASESOR
+// 🔥 ENVÍO AL ASESOR (VERSIÓN SEGURA)
 async function enviarAsesor(sock, msg, texto) {
 
-    let jid = msg.key.remoteJid;
+    try {
+        let jid = msg.key.remoteJid;
 
-    if (!jid || !jid.endsWith("@s.whatsapp.net")) return;
+        if (!jid) return;
 
-    const numero = jid.replace("@s.whatsapp.net", "");
-    const nombre = msg.pushName || "Cliente";
+        const numero = jid.replace("@s.whatsapp.net", "");
+        const nombre = msg.pushName || "Cliente";
 
-    console.log("📤 ENVIANDO AL ASESOR:", numero);
+        console.log("📤 Intentando enviar al asesor...");
 
-    await sock.sendMessage(ASESOR_JID, {
-        text: `🔥 CLIENTE INTERESADO
+        // ✅ Verificar número
+        const [result] = await sock.onWhatsApp(ASESOR_NUMERO);
+
+        if (!result || !result.exists) {
+            console.log("❌ El número del asesor no existe en WhatsApp");
+            return;
+        }
+
+        const asesorJidReal = result.jid;
+
+        await sock.sendMessage(asesorJidReal, {
+            text: `🔥 CLIENTE INTERESADO
 
 👤 ${nombre}
 📞 +${numero}
 💬 ${texto}
 
 👉 https://wa.me/${numero}`
-    });
+        });
+
+        console.log("✅ ENVIADO AL ASESOR CORRECTAMENTE");
+
+    } catch (error) {
+        console.log("❌ ERROR ENVIANDO AL ASESOR:", error);
+    }
 }
 
-// 🤖 RESPUESTA IA
+// 🤖 IA
 async function responderIA(text) {
 
     const res = await openai.chat.completions.create({
@@ -87,18 +86,10 @@ async function responderIA(text) {
         messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: text }
-        ],
-        temperature: 0.7
+        ]
     });
 
-    let respuesta = res.choices[0].message.content || "";
-
-    const asesor = respuesta.includes("[ASESOR]");
-
-    return {
-        texto: respuesta.replace(/\[ASESOR\]/g, "").trim(),
-        enviarAsesor: asesor
-    };
+    return res.choices[0].message.content;
 }
 
 // 🚀 BOT
@@ -137,16 +128,17 @@ async function startBot() {
             msg.message.extendedTextMessage?.text ||
             "";
 
+        if (!text) return;
+
         const cleanText = text.trim().toLowerCase();
-        if (!cleanText) return;
 
-        // 🤖 IA RESPONDE
-        const ia = await responderIA(cleanText);
+        // 🤖 RESPUESTA
+        const respuesta = await responderIA(cleanText);
 
-        await sock.sendMessage(from, { text: ia.texto });
+        await sock.sendMessage(from, { text: respuesta });
 
-        // 🔥 SI DETECTA COMPRA → ENVÍA AL ASESOR
-        if (ia.enviarAsesor || detectarCompra(cleanText)) {
+        // 🔥 SI HAY INTENCIÓN → ENVÍA AL ASESOR
+        if (detectarCompra(cleanText)) {
             await enviarAsesor(sock, msg, cleanText);
         }
     });
