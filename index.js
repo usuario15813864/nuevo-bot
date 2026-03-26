@@ -1,4 +1,4 @@
-// index.js - BOT PRO VENDEDOR FINAL 🔥 FULL CORREGIDO
+// index.js - BOT PRO VENDEDOR FINAL 🔥 (FIX TOTAL)
 
 import qrcode from "qrcode-terminal";
 import dotenv from "dotenv";
@@ -42,15 +42,13 @@ Productos:
 4 Masajeador $15
 
 Reglas:
-- No inventes precios
 - Responde corto
-- Cierra ventas
-- La faja es SOLO para papada
+- No inventes precios
+- La faja es solo para papada
 
 Envíos:
-- Envíos a todo el país
-- Contraentrega SOLO en Quito
-- Otras ciudades pago previo
+- Solo Quito
+- Contraentrega disponible
 
 IMPORTANTE:
 - Si quiere comprar → [COMPRA:X]
@@ -87,10 +85,11 @@ async function enviarAsesor(sock, msg, texto, extra, state) {
 
     let jid = msg.key.remoteJid;
 
-    // 🚫 Ignorar LID
-    if (jid.includes("@lid")) return;
-
-    if (!jid.endsWith("@s.whatsapp.net")) return;
+    // ✅ SOLO números reales
+    if (!jid || !jid.endsWith("@s.whatsapp.net")) {
+        console.log("⚠️ JID ignorado:", jid);
+        return;
+    }
 
     const numero = jid.replace("@s.whatsapp.net", "");
 
@@ -195,18 +194,20 @@ async function startBot() {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
+        console.log("📩 MENSAJE:", JSON.stringify(msg, null, 2));
+
         let jid = msg.key.remoteJid;
 
-        // 🚫 Ignorar LID
-        if (jid.includes("@lid")) return;
-
-        if (jid.endsWith("@g.us")) return;
+        // ❌ ignorar grupos
+        if (!jid || jid.endsWith("@g.us")) return;
 
         const from = jid;
 
         const text =
             msg.message.conversation ||
             msg.message.extendedTextMessage?.text ||
+            msg.message.imageMessage?.caption ||
+            msg.message.videoMessage?.caption ||
             "";
 
         const cleanText = text.trim().toLowerCase();
