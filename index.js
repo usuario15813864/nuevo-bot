@@ -1,4 +1,4 @@
-// index.js - BOT PRO VENDEDOR FINAL 🔥 DEFINITIVO
+// index.js - BOT FINAL ESTABLE 🔥
 
 import qrcode from "qrcode-terminal";
 import dotenv from "dotenv";
@@ -26,12 +26,13 @@ const productos = {
     "4": { nombre: "Masajeador eléctrico corporal", precio: 15 }
 };
 
+// ⚠️ SIN +
 const ASESOR_JID = "593979108339@s.whatsapp.net";
 
 // 🤖 OPENAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 🧠 PROMPT
+// 🧠 PROMPT CONTROLADO
 const SYSTEM_PROMPT = `
 Eres un vendedor experto de Minegoc8.
 
@@ -86,72 +87,68 @@ async function saveUserState(jid, state) {
     await fs.writeFile(file, JSON.stringify(state, null, 2));
 }
 
-// 📲 ENVIAR AL ASESOR
+// 📲 ENVIAR AL ASESOR (FORZADO)
 async function enviarAsesor(sock, msg, texto, extra, state) {
 
     let jid = msg.key.remoteJid;
 
-    if (!jid || !jid.endsWith("@s.whatsapp.net")) return;
+    if (!jid || !jid.endsWith("@s.whatsapp.net")) {
+        console.log("❌ JID inválido:", jid);
+        return;
+    }
 
     const numero = jid.replace("@s.whatsapp.net", "");
+
+    console.log("📤 ENVIANDO AL ASESOR:", numero);
+
     const nombre = msg.pushName || "Cliente";
     const producto = productos[state.selectedProduct]?.nombre || "No definido";
     const telefono = state.telefono || "No enviado";
 
-    await sock.sendMessage(ASESOR_JID, {
-        text: `🔥 CLIENTE
+    try {
+        await sock.sendMessage(ASESOR_JID, {
+            text: `🔥 CLIENTE NUEVO
 
 👤 ${nombre}
-📞 +${numero}
-📲 Tel: ${telefono}
+📞 WhatsApp: +${numero}
+📲 Tel confirmado: ${telefono}
 🛒 ${producto}
 🧾 ${extra}
 💬 ${texto}
 
 👉 https://wa.me/${numero}`
-    });
+        });
+
+        console.log("✅ ENVIADO CORRECTO");
+
+    } catch (err) {
+        console.log("❌ ERROR AL ENVIAR:", err);
+    }
 }
 
 // 🤖 IA
-async function responderIA(sock, msg, text, state) {
+async function responderIA(text, state) {
 
     const detectado = detectarProducto(text);
     if (detectado) state.selectedProduct = detectado;
 
-    const messages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...state.history,
-        { role: "user", content: text }
-    ];
-
     const res = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        messages,
-        temperature: 0.7
+        messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: text }
+        ]
     });
 
     let respuesta = res.choices[0].message.content || "";
 
     const compra = respuesta.match(/\[COMPRA:(\d)\]/);
-    const envio = respuesta.includes("[ENVIO]");
-
     if (compra) {
         state.selectedProduct = compra[1];
         state.step = "pidiendo_datos";
     }
 
-    if (envio) {
-        await enviarAsesor(sock, msg, text, "Consulta envío", state);
-    }
-
-    respuesta = respuesta.replace(/\[.*?\]/g, "").trim();
-
-    state.history.push({ role: "user", content: text });
-    state.history.push({ role: "assistant", content: respuesta });
-
-    await saveUserState(msg.key.remoteJid, state);
-
-    return respuesta || "Te ayudo 😊";
+    return respuesta.replace(/\[.*?\]/g, "").trim();
 }
 
 // 🚀 BOT
@@ -168,16 +165,8 @@ async function startBot() {
     });
 
     sock.ev.on("connection.update", (update) => {
-        const { connection, qr, lastDisconnect } = update;
-
-        if (qr) qrcode.generate(qr, { small: true });
-
-        if (connection === "open") console.log("✅ BOT CONECTADO");
-
-        if (connection === "close") {
-            const reconnect =
-                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (reconnect) setTimeout(startBot, 3000);
+        if (update.connection === "open") {
+            console.log("✅ BOT CONECTADO");
         }
     });
 
@@ -196,8 +185,6 @@ async function startBot() {
         const text =
             msg.message.conversation ||
             msg.message.extendedTextMessage?.text ||
-            msg.message.imageMessage?.caption ||
-            msg.message.videoMessage?.caption ||
             "";
 
         const cleanText = text.trim().toLowerCase();
@@ -205,66 +192,17 @@ async function startBot() {
 
         let stateUser = await loadUserState(from);
 
-        // Detectar producto
+        // 🔥 DETECTAR PRODUCTO
         const detectado = detectarProducto(cleanText);
         if (detectado) stateUser.selectedProduct = detectado;
 
-        // 🛒 SI YA ESTÁ COMPRANDO → pedir datos
-        if (stateUser.step === "pidiendo_datos") {
-
-            const telefonoDetectado = cleanText.match(/09\d{8}/);
-
-            if (telefonoDetectado) {
-                stateUser.telefono = telefonoDetectado[0];
-                stateUser.step = "finalizado";
-
-                await sock.sendMessage(from, {
-                    text: "✅ Pedido confirmado, te escribimos enseguida 🚚"
-                });
-
-                await enviarAsesor(sock, msg, cleanText, "PEDIDO FINAL", stateUser);
-                await saveUserState(from, stateUser);
-                return;
-            } else {
-                await sock.sendMessage(from, {
-                    text: "Envíame un número válido 📞 (ej: 0987654321)"
-                });
-                return;
-            }
-        }
-
-        // 🟢 MENÚ SOLO SI ES EXACTO
-        if (["hola","menu","menú","inicio"].includes(cleanText) && !stateUser.selectedProduct) {
-            await sock.sendMessage(from, {
-                text: `👋 Bienvenido
-
-1️⃣ Lavadora $8
-2️⃣ Selladora $28
-3️⃣ Faja papada $8
-4️⃣ Masajeador $15
-
-Escribe el número o dime qué deseas 😏`
-            });
-            return;
-        }
-
-        // 📦 SELECCIÓN DIRECTA
-        if (/^[1-4]$/.test(cleanText)) {
-            const p = productos[cleanText];
-            stateUser.selectedProduct = cleanText;
-
-            await sock.sendMessage(from, {
-                text: `✨ ${p.nombre} - $${p.precio}
-
-¿Te lo reservo? Escribe *comprar* 😏`
-            });
-
-            await saveUserState(from, stateUser);
-            return;
-        }
-
-        // 🛒 COMPRA DIRECTA
-        if (cleanText.includes("comprar")) {
+        // 🔥 DETECTAR COMPRA MANUAL
+        if (
+            ["si","sí","quiero","me interesa","lo quiero","comprar"].some(p =>
+                cleanText.includes(p)
+            ) &&
+            stateUser.selectedProduct
+        ) {
             stateUser.step = "pidiendo_datos";
 
             await sock.sendMessage(from, {
@@ -272,16 +210,70 @@ Escribe el número o dime qué deseas 😏`
 
 Envíame:
 Nombre
-Dirección
+Dirección en Quito
 Número 📞`
+            });
+
+            await enviarAsesor(sock, msg, cleanText, "QUIERE COMPRAR", stateUser);
+            await saveUserState(from, stateUser);
+            return;
+        }
+
+        // 📲 CAPTURAR DATOS
+        if (stateUser.step === "pidiendo_datos") {
+
+            const telefonoDetectado = cleanText.match(/09\d{8}/);
+
+            if (telefonoDetectado) {
+
+                stateUser.telefono = telefonoDetectado[0];
+                stateUser.step = "finalizado";
+
+                await sock.sendMessage(from, {
+                    text: "✅ Pedido confirmado 🚚"
+                });
+
+                await enviarAsesor(sock, msg, cleanText, "PEDIDO FINAL", stateUser);
+                await saveUserState(from, stateUser);
+                return;
+            } else {
+                await sock.sendMessage(from, {
+                    text: "Envíame un número válido 📞"
+                });
+                return;
+            }
+        }
+
+        // 🟢 MENÚ
+        if (["hola","menu","menú"].includes(cleanText) && !stateUser.selectedProduct) {
+            await sock.sendMessage(from, {
+                text: `👋 Bienvenido
+
+1️⃣ Lavadora $8
+2️⃣ Selladora $28
+3️⃣ Faja papada $8
+4️⃣ Masajeador $15`
+            });
+            return;
+        }
+
+        // 📦 SELECCIÓN
+        if (/^[1-4]$/.test(cleanText)) {
+            const p = productos[cleanText];
+            stateUser.selectedProduct = cleanText;
+
+            await sock.sendMessage(from, {
+                text: `✨ ${p.nombre} $${p.precio}
+
+¿Lo deseas comprar? 😏`
             });
 
             await saveUserState(from, stateUser);
             return;
         }
 
-        // 🤖 IA SIEMPRE
-        const respuesta = await responderIA(sock, msg, cleanText, stateUser);
+        // 🤖 IA
+        const respuesta = await responderIA(cleanText, stateUser);
         await sock.sendMessage(from, { text: respuesta });
     });
 }
