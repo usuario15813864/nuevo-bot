@@ -18,11 +18,11 @@ const logger = pino({ level: "silent" });
 const USER_DATA_DIR = "./user_data";
 await fs.mkdir(USER_DATA_DIR, { recursive: true }).catch(() => {});
 
-// 📦 PRODUCTOS
+// 📦 PRODUCTOS (CORREGIDO)
 const productos = {
     "1": { nombre: "Lavadora portátil", precio: 8 },
     "2": { nombre: "Selladora al vacío portátil", precio: 28 },
-    "3": { nombre: "Faja modeladora reductora", precio: 8 },
+    "3": { nombre: "Faja moldeadora de papada", precio: 8 },
     "4": { nombre: "Masajeador eléctrico corporal", precio: 15 }
 };
 
@@ -36,28 +36,33 @@ if (!process.env.OPENAI_API_KEY) {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 🧠 PROMPT VENDEDOR PRO
+// 🧠 PROMPT VENDEDOR PRO (CORREGIDO)
 const SYSTEM_PROMPT = `
 Eres un vendedor experto de Minegoc8.
 
 Productos (precios FIJOS):
 1 Lavadora portátil $8
 2 Selladora al vacío portátil $28
-3 Faja modeladora $8
+3 Faja moldeadora de papada $8
 4 Masajeador $15
 
 Reglas:
-- Siempre anima a comprar
-- Nunca inventes precios
-- Envíos a domicilio en Quito
-- Pagos: contra entrega, transferencia o deuna
-- Ubicación: Centro Histórico Quito, Benalcázar y Manabí
+- No inventes precios
+- Responde corto y claro
+- Siempre intenta cerrar la venta
+- La faja es SOLO para moldear la papada (rostro), NO el cuerpo
+
+Envíos:
+- Hacemos envíos a varias ciudades del país
+- Contraentrega SOLO disponible en Quito
+- Para otras ciudades el pago es previo
+
+Ubicación SOLO si la piden:
+Centro Histórico Quito, Benalcázar y Manabí
 
 IMPORTANTE:
-- Si el cliente muestra intención de compra → termina con [COMPRA:X]
-- Si pregunta por envío → termina con [ENVIO]
-
-Responde corto, natural y persuasivo.
+- Si el cliente quiere comprar → [COMPRA:X]
+- Si pregunta por envío → [ENVIO]
 `;
 
 // 📁 MEMORIA
@@ -109,9 +114,8 @@ async function responderIA(sock, from, text, state) {
         messages
     });
 
-    let respuesta = res.choices[0].message.content;
+    let respuesta = res.choices[0].message.content || "";
 
-    // 🎯 DETECCIÓN
     const compra = respuesta.match(/\[COMPRA:(\d)\]/);
     const envio = respuesta.includes("[ENVIO]");
 
@@ -136,7 +140,7 @@ async function responderIA(sock, from, text, state) {
 
     await saveUserState(from, state);
 
-    return respuesta;
+    return respuesta || "Te ayudo con gusto 😊";
 }
 
 // 🚀 BOT
@@ -155,7 +159,7 @@ async function startBot() {
         const { connection, qr, lastDisconnect } = update;
 
         if (qr) {
-            console.log("📱 ESCANEA QR:");
+            console.log("📱 ESCANEA ESTE QR:");
             qrcode.generate(qr, { small: true });
         }
 
@@ -164,10 +168,13 @@ async function startBot() {
         }
 
         if (connection === "close") {
-            const reconnect =
+            const shouldReconnect =
                 lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-            if (reconnect) setTimeout(startBot, 3000);
+            if (shouldReconnect) {
+                console.log("🔁 Reconectando...");
+                setTimeout(startBot, 3000);
+            }
         }
     });
 
@@ -179,21 +186,27 @@ async function startBot() {
         if (!msg.message || msg.key.fromMe) return;
 
         const from = msg.key.remoteJid;
-        const text = (msg.message.conversation || "").trim().toLowerCase();
-        if (!text) return;
+
+        const text =
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            "";
+
+        const cleanText = text.trim().toLowerCase();
+        if (!cleanText) return;
 
         let state = await loadUserState(from);
 
         // 🟢 MENÚ
-        if (["hola","menu","menú","inicio"].some(x => text.includes(x))) {
+        if (["hola","menu","menú","inicio"].some(x => cleanText.includes(x))) {
 
             await sock.sendMessage(from, {
                 text: `👋 Bienvenido a Minegoc8
 
-1 Lavadora $8
-2 Selladora $28
-3 Faja $8
-4 Masajeador $15
+1️⃣ Lavadora portátil $8
+2️⃣ Selladora al vacío $28
+3️⃣ Faja papada $8
+4️⃣ Masajeador $15
 
 Escribe el número o escribe *asesor*`
             });
@@ -202,8 +215,9 @@ Escribe el número o escribe *asesor*`
         }
 
         // 👨‍💼 ASESOR
-        if (text.includes("asesor")) {
-            await enviarAsesor(sock, from, text, "Cliente pide asesor");
+        if (cleanText.includes("asesor")) {
+            await enviarAsesor(sock, from, cleanText, "Cliente pide asesor");
+
             await sock.sendMessage(from, {
                 text: "Un asesor te escribirá en breve 📞"
             });
@@ -211,10 +225,10 @@ Escribe el número o escribe *asesor*`
         }
 
         // 📦 SELECCIÓN
-        if (/^[1-4]$/.test(text)) {
-            const p = productos[text];
+        if (/^[1-4]$/.test(cleanText)) {
+            const p = productos[cleanText];
 
-            state.selectedProduct = text;
+            state.selectedProduct = cleanText;
 
             await sock.sendMessage(from, {
                 text: `✨ ${p.nombre} - $${p.precio}
@@ -226,8 +240,8 @@ Escribe el número o escribe *asesor*`
             return;
         }
 
-        // 🛒 COMPRA DIRECTA
-        if (text.includes("comprar")) {
+        // 🛒 COMPRA
+        if (cleanText.includes("comprar")) {
 
             state.step = "comprando";
 
@@ -244,12 +258,12 @@ Teléfono`
             return;
         }
 
-        // 📦 DATOS DE COMPRA
-        if (state.step === "comprando" && text.length > 10) {
+        // 📦 DATOS
+        if (state.step === "comprando" && cleanText.length > 10) {
 
             const prod = productos[state.selectedProduct]?.nombre || "Producto";
 
-            await enviarAsesor(sock, from, text, `PEDIDO FINAL → ${prod}`);
+            await enviarAsesor(sock, from, cleanText, `PEDIDO FINAL → ${prod}`);
 
             await sock.sendMessage(from, {
                 text: "✅ Pedido enviado. Te contactamos enseguida 🚚"
@@ -261,7 +275,7 @@ Teléfono`
         }
 
         // 🤖 IA
-        const respuesta = await responderIA(sock, from, text, state);
+        const respuesta = await responderIA(sock, from, cleanText, state);
 
         await sock.sendMessage(from, { text: respuesta });
     });
