@@ -1,4 +1,4 @@
-// index.js - BOT PRO VENDEDOR FINAL 🔥
+// index.js - BOT PRO VENDEDOR FINAL 🔥 FULL CORREGIDO
 
 import qrcode from "qrcode-terminal";
 import dotenv from "dotenv";
@@ -18,7 +18,7 @@ const logger = pino({ level: "silent" });
 const USER_DATA_DIR = "./user_data";
 await fs.mkdir(USER_DATA_DIR, { recursive: true }).catch(() => {});
 
-// 📦 PRODUCTOS (CORREGIDO)
+// 📦 PRODUCTOS
 const productos = {
     "1": { nombre: "Lavadora portátil", precio: 8 },
     "2": { nombre: "Selladora al vacío portátil", precio: 28 },
@@ -29,18 +29,13 @@ const productos = {
 const ASESOR_JID = "593979108339@s.whatsapp.net";
 
 // 🤖 OPENAI
-if (!process.env.OPENAI_API_KEY) {
-    console.error("❌ Falta OPENAI_API_KEY");
-    process.exit(1);
-}
-
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 🧠 PROMPT VENDEDOR PRO (CORREGIDO)
+// 🧠 PROMPT
 const SYSTEM_PROMPT = `
 Eres un vendedor experto de Minegoc8.
 
-Productos (precios FIJOS):
+Productos:
 1 Lavadora portátil $8
 2 Selladora al vacío portátil $28
 3 Faja moldeadora de papada $8
@@ -48,22 +43,29 @@ Productos (precios FIJOS):
 
 Reglas:
 - No inventes precios
-- Responde corto y claro
-- Siempre intenta cerrar la venta
-- La faja es SOLO para moldear la papada (rostro), NO el cuerpo
+- Responde corto
+- Cierra ventas
+- La faja es SOLO para papada
 
 Envíos:
-- Hacemos envíos a varias ciudades del país
-- Contraentrega SOLO disponible en Quito
-- Para otras ciudades el pago es previo
-
-Ubicación SOLO si la piden:
-Centro Histórico Quito, Benalcázar y Manabí
+- Envíos a todo el país
+- Contraentrega SOLO en Quito
+- Otras ciudades pago previo
 
 IMPORTANTE:
-- Si el cliente quiere comprar → [COMPRA:X]
-- Si pregunta por envío → [ENVIO]
+- Si quiere comprar → [COMPRA:X]
+- Si pregunta envío → [ENVIO]
 `;
+
+// 🔍 DETECTAR PRODUCTO
+function detectarProducto(texto) {
+    texto = texto.toLowerCase();
+    if (texto.includes("faja")) return "3";
+    if (texto.includes("selladora")) return "2";
+    if (texto.includes("lavadora")) return "1";
+    if (texto.includes("masajeador")) return "4";
+    return null;
+}
 
 // 📁 MEMORIA
 async function loadUserState(jid) {
@@ -71,7 +73,7 @@ async function loadUserState(jid) {
     try {
         return JSON.parse(await fs.readFile(file, "utf-8"));
     } catch {
-        return { history: [], selectedProduct: null, step: "menu" };
+        return { history: [], selectedProduct: null, step: "menu", telefono: null };
     }
 }
 
@@ -81,26 +83,40 @@ async function saveUserState(jid, state) {
 }
 
 // 📲 ENVIAR AL ASESOR
-async function enviarAsesor(sock, from, texto, extra) {
-    const numero = from.split("@")[0];
+async function enviarAsesor(sock, msg, texto, extra, state) {
+
+    let jid = msg.key.remoteJid;
+
+    // 🚫 Ignorar LID
+    if (jid.includes("@lid")) return;
+
+    if (!jid.endsWith("@s.whatsapp.net")) return;
+
+    const numero = jid.replace("@s.whatsapp.net", "");
+
+    const nombre = msg.pushName || "Cliente";
+    const producto = productos[state.selectedProduct]?.nombre || "No definido";
+    const telefonoConfirmado = state.telefono || "No proporcionado";
 
     await sock.sendMessage(ASESOR_JID, {
-        text: `🔥 NUEVO CLIENTE
+        text: `🔥 CLIENTE REAL
 
-📞 +${numero}
-🧾 Info: ${extra}
-💬 Mensaje: ${texto}
+👤 ${nombre}
+📞 WhatsApp: +${numero}
+📲 Tel confirmado: ${telefonoConfirmado}
+🛒 ${producto}
+🧾 ${extra}
+💬 ${texto}
 
 👉 https://wa.me/${numero}`
     });
 }
 
 // 🤖 IA
-async function responderIA(sock, from, text, state) {
+async function responderIA(sock, msg, text, state) {
 
-    if (state.history.length > 10) {
-        state.history = state.history.slice(-10);
-    }
+    const detectado = detectarProducto(text);
+    if (detectado) state.selectedProduct = detectado;
 
     const messages = [
         { role: "system", content: SYSTEM_PROMPT },
@@ -110,8 +126,8 @@ async function responderIA(sock, from, text, state) {
 
     const res = await openai.chat.completions.create({
         model: "gpt-4o-mini",
-        temperature: 0.7,
-        messages
+        messages,
+        temperature: 0.7
     });
 
     let respuesta = res.choices[0].message.content || "";
@@ -120,17 +136,13 @@ async function responderIA(sock, from, text, state) {
     const envio = respuesta.includes("[ENVIO]");
 
     if (compra) {
-        const id = compra[1];
-        const prod = productos[id]?.nombre;
-
-        await enviarAsesor(sock, from, text, `Quiere comprar → ${prod}`);
-
+        state.selectedProduct = compra[1];
         state.step = "comprando";
-        state.selectedProduct = id;
+        await enviarAsesor(sock, msg, text, "Quiere comprar", state);
     }
 
     if (envio) {
-        await enviarAsesor(sock, from, text, "Pregunta sobre envío");
+        await enviarAsesor(sock, msg, text, "Consulta envío", state);
     }
 
     respuesta = respuesta.replace(/\[.*?\]/g, "").trim();
@@ -138,7 +150,7 @@ async function responderIA(sock, from, text, state) {
     state.history.push({ role: "user", content: text });
     state.history.push({ role: "assistant", content: respuesta });
 
-    await saveUserState(from, state);
+    await saveUserState(msg.key.remoteJid, state);
 
     return respuesta || "Te ayudo con gusto 😊";
 }
@@ -152,14 +164,15 @@ async function startBot() {
     const sock = makeWASocket({
         version,
         auth: state,
-        logger
+        logger,
+        printQRInTerminal: true
     });
 
     sock.ev.on("connection.update", (update) => {
         const { connection, qr, lastDisconnect } = update;
 
         if (qr) {
-            console.log("📱 ESCANEA ESTE QR:");
+            console.log("📱 ESCANEA QR:");
             qrcode.generate(qr, { small: true });
         }
 
@@ -168,13 +181,10 @@ async function startBot() {
         }
 
         if (connection === "close") {
-            const shouldReconnect =
+            const reconnect =
                 lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-            if (shouldReconnect) {
-                console.log("🔁 Reconectando...");
-                setTimeout(startBot, 3000);
-            }
+            if (reconnect) setTimeout(startBot, 3000);
         }
     });
 
@@ -185,7 +195,14 @@ async function startBot() {
         const msg = messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const from = msg.key.remoteJid;
+        let jid = msg.key.remoteJid;
+
+        // 🚫 Ignorar LID
+        if (jid.includes("@lid")) return;
+
+        if (jid.endsWith("@g.us")) return;
+
+        const from = jid;
 
         const text =
             msg.message.conversation ||
@@ -195,31 +212,31 @@ async function startBot() {
         const cleanText = text.trim().toLowerCase();
         if (!cleanText) return;
 
-        let state = await loadUserState(from);
+        let userState = await loadUserState(from);
+
+        const detectado = detectarProducto(cleanText);
+        if (detectado) userState.selectedProduct = detectado;
 
         // 🟢 MENÚ
         if (["hola","menu","menú","inicio"].some(x => cleanText.includes(x))) {
-
             await sock.sendMessage(from, {
                 text: `👋 Bienvenido a Minegoc8
 
-1️⃣ Lavadora portátil $8
-2️⃣ Selladora al vacío $28
+1️⃣ Lavadora $8
+2️⃣ Selladora $28
 3️⃣ Faja papada $8
 4️⃣ Masajeador $15
 
-Escribe el número o escribe *asesor*`
+Escribe el número o *asesor*`
             });
-
             return;
         }
 
         // 👨‍💼 ASESOR
         if (cleanText.includes("asesor")) {
-            await enviarAsesor(sock, from, cleanText, "Cliente pide asesor");
-
+            await enviarAsesor(sock, msg, cleanText, "Pidió asesor", userState);
             await sock.sendMessage(from, {
-                text: "Un asesor te escribirá en breve 📞"
+                text: "Un asesor te escribirá enseguida 📞"
             });
             return;
         }
@@ -227,23 +244,22 @@ Escribe el número o escribe *asesor*`
         // 📦 SELECCIÓN
         if (/^[1-4]$/.test(cleanText)) {
             const p = productos[cleanText];
-
-            state.selectedProduct = cleanText;
+            userState.selectedProduct = cleanText;
 
             await sock.sendMessage(from, {
                 text: `✨ ${p.nombre} - $${p.precio}
 
-¿Te lo reservo? Escríbeme *comprar* 😏`
+¿Te lo reservo? Escribe *comprar* 😏`
             });
 
-            await saveUserState(from, state);
+            await saveUserState(from, userState);
             return;
         }
 
         // 🛒 COMPRA
         if (cleanText.includes("comprar")) {
 
-            state.step = "comprando";
+            userState.step = "pidiendo_datos";
 
             await sock.sendMessage(from, {
                 text: `Perfecto 😎
@@ -251,32 +267,42 @@ Escribe el número o escribe *asesor*`
 Envíame:
 Nombre
 Dirección
-Teléfono`
+Número de teléfono 📞`
             });
 
-            await saveUserState(from, state);
+            await saveUserState(from, userState);
             return;
         }
 
-        // 📦 DATOS
-        if (state.step === "comprando" && cleanText.length > 10) {
+        // 📲 CAPTURAR TELÉFONO
+        if (userState.step === "pidiendo_datos") {
 
-            const prod = productos[state.selectedProduct]?.nombre || "Producto";
+            const telefonoDetectado = cleanText.match(/09\d{8}/);
 
-            await enviarAsesor(sock, from, cleanText, `PEDIDO FINAL → ${prod}`);
+            if (telefonoDetectado) {
+                userState.telefono = telefonoDetectado[0];
+                userState.step = "confirmado";
 
-            await sock.sendMessage(from, {
-                text: "✅ Pedido enviado. Te contactamos enseguida 🚚"
-            });
+                await sock.sendMessage(from, {
+                    text: `✅ Pedido confirmado
 
-            state.step = "menu";
-            await saveUserState(from, state);
-            return;
+En breve te contactamos 🚚`
+                });
+
+                await enviarAsesor(sock, msg, cleanText, "PEDIDO FINAL", userState);
+
+                await saveUserState(from, userState);
+                return;
+            } else {
+                await sock.sendMessage(from, {
+                    text: "Por favor envía un número válido 📞 (ej: 0987654321)"
+                });
+                return;
+            }
         }
 
         // 🤖 IA
-        const respuesta = await responderIA(sock, from, cleanText, state);
-
+        const respuesta = await responderIA(sock, msg, cleanText, userState);
         await sock.sendMessage(from, { text: respuesta });
     });
 }
